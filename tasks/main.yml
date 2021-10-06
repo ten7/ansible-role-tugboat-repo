@@ -8,26 +8,120 @@
     return_content: yes
   register: _project_list
 
-- name: Get the projects IDs given the project names
+- name: Get the projects ID given the project name
   set_fact:
-    project:
-      name: "{{ item.project }}"
+    _project:
+      name: "{{ tugboat_repo.project }}"
       id: "{{ _project_list.json | json_query(_project_query) | first | default('') }}"
   vars:
-    _project_query: "[?name=='{{ item.project }}'].id"
-  loop: "{{ tugboat_repos | default([]) }}"
-  register: _project_ids_raw
+    _project_query: "[?name=='{{ tugboat_repo.project }}'].id"
 
-- debug: msg={{_project_ids_raw }}
+- debug: msg={{ _project }}
 
-- name: Normalize the project IDs into a list
+- name: Fail if project name was not found
+  fail:
+    msg: "Project name {{ tugboat_repo.project }} not found in list of names."
+  when:
+    - _project.id | default('') | length < 1
+
+- name: Get all repos
+  uri:
+    url: "https://api.tugboat.qa/v3/projects/{{ _project.id }}/repos"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ tugboat_api_token }}"
+    return_content: yes
+  register: _repo_list
+
+- name: Get a list of existing repos in the project
   set_fact:
-    _projcts: "{{ _project_ids_raw.results | map(attribute='ansible_facts.project') | list }}"
+    _repo_names: "{{_repo_list.json | map(attribute='name') | list }}"
 
-- debug: msg={{ _projcts }}
+- debug: var=_repo_names
 
-- name: Work with repos
-  include_tasks: "repos.yml"
-  loop: "{{ _projcts | default([]) }}"
-  loop_control:
-    loop_var: _project
+- name: Get the repo ID given the repo name
+  set_fact:
+    _repo_id: "{{ _repo_list.json | json_query(_repo_query) | first | default('') }}"
+  vars:
+    _repo_query: "[?name=='{{ tugboat_repo.name }}'].id"
+
+- debug: var=_repo_id
+
+- name: Create a new repo if it doesn't exist
+  uri:
+    url: "https://api.tugboat.qa/v3/repos"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ tugboat_api_token }}"
+      Accept: "application/vnd.tugboat.propeller+json"
+    status_code:
+      - 201
+    body_format: json
+    body:
+      project: "{{ _project.id }}"
+      provider:
+        name: "{{ tugboat_repo.provider.name }}"
+        address: "{{ tugboat_repo.provider.address | default('') }}"
+      repository:
+        name: "{{ tugboat_repo.repository.name }}"
+        group: "{{ tugboat_repo.repository.group }}"
+      auth:
+        token: "{{ tugboat_repo.auth.token | default('') }}"
+      name: "{{ tugboat_repo.name }}"
+      autobuild: "{{ tugboat_repo.autobuild | default(true) | bool }}"
+      autodelete: "{{ tugboat_repo.autodelete | default(true) | bool }}"
+      autorebuild: "{{ tugboat_repo.autorebuild | default(true) | bool }}"
+      build_timeout: "{{ tugboat_repo.build_timeout | default(1200) | int }}"
+      envvars: >
+        [{% for _envar in tugboat_repo.envvars | default([]) %}
+          "{{ _envar.name }}={{ _envar.value }}"{% if not loop.last %},{% endif %}
+        {% endfor %}]
+      domain: "{{ tugboat_repo.domain | default(omit) }}"
+      ip_allow: "{{ tugboat_repo.ip_allow | default(omit) }}"
+      ip_deny: "{{ tugboat_repo.ip_deny | default(omit) }}"
+      provider_deployment: "{{ tugboat_repo.provider_deployment | default(false) | bool }}"
+      provider_forks: "{{ tugboat_repo.provider_forks | default(true) | bool }}"
+      quota: "{{ tugboat_repo.quota | default(omit) }}"
+      rebuild_orphaned: "{{ tugboat_repo.rebuild_orphaned | default(false) | bool }}"
+      rebuild_stale: "{{ tugboat_repo.rebuild_stale | default(false) | bool }}"
+      refresh_anchors: "{{ tugboat_repo.refresh_anchors | default(true) | bool }}"
+      refresh_day: "{{ tugboat_repo.refresh_day | default(7) | int }}"
+      refresh_hour: "{{ tugboat_repo.refresh_hour | default(0) | int }}"
+  when:
+    - tugboat_repo.name not in _repo_names
+    - tugboat_repo.state | default('present') == 'present'
+
+- name: Update repo if it already exists
+  uri:
+    url: "https://api.tugboat.qa/v3/repos/{{ _repo_id }}"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ tugboat_api_token }}"
+      Accept: "application/vnd.tugboat.propeller+json"
+    status_code:
+      - 200
+    body_format: json
+    body:
+      auth:
+        token: "{{ tugboat_repo.auth.token | default('') }}"
+      name: "{{ tugboat_repo.name }}"
+      envvars: >
+        [{% for _envar in tugboat_repo.env | default([]) %}
+          "{{ _envar.name }}={{ _envar.value }}"{% if not loop.last %},{% endif %}
+        {% endfor %}]
+  when:
+    - _repo_id | default('') != ''
+    - tugboat_repo.name in _repo_names
+    - tugboat_repo.state | default('present') == 'present'
+
+- name: Delete repo if status is 'absent'
+  uri:
+    url: "https://api.tugboat.qa/v3/repos"
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ tugboat_api_token }}"
+    status_code:
+      - 204
+  when:
+    - tugboat_repo.name in _repo_names
+    - tugboat_repo.state | default('present') == 'absent'
