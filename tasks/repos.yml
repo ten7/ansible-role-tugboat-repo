@@ -1,0 +1,42 @@
+---
+- name: Get all repos
+  uri:
+    url: "https://api.tugboat.qa/v3/projects/{{ _project.id }}/repos"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ tugboat_api_token }}"
+    return_content: yes
+  register: _repo_list
+
+- set_fact:
+    _repo_names: "{{_repo_list.json | map(attribute='name') | list }}"
+
+- debug: var=_repo_names
+
+- name: Create repos
+  uri:
+    url: "https://api.tugboat.qa/v3/repos"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ tugboat_api_token }}"
+    status_code:
+      - 201
+    body_format: json
+    body:
+      project: "{{ _project.id }}"
+      provider:
+        name: "{{ item.provider.name }}"
+        address: "{{ item.provider.address | default('') }}"
+      repository:
+        name: "{{ item.repository.name }}"
+        group: "{{ item.repository.group }}"
+      auth:
+        token: "{{ item.auth.token | default('') }}"
+      name: "{{ item.name }}"
+  loop: "{{ tugboat_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - item.project == _project.name
+    - item.name not in _repo_names
+    - item.state | default('present') == 'present'

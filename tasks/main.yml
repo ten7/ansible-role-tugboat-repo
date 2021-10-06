@@ -1,0 +1,33 @@
+---
+- name: Get all projects
+  uri:
+    url: "https://api.tugboat.qa/v3/projects"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ tugboat_api_token }}"
+    return_content: yes
+  register: _project_list
+
+- name: Get the projects IDs given the project names
+  set_fact:
+    project:
+      name: "{{ item.project }}"
+      id: "{{ _project_list.json | json_query(_project_query) | first | default('') }}"
+  vars:
+    _project_query: "[?name=='{{ item.project }}'].id"
+  loop: "{{ tugboat_repos | default([]) }}"
+  register: _project_ids_raw
+
+- debug: msg={{_project_ids_raw }}
+
+- name: Normalize the project IDs into a list
+  set_fact:
+    _projcts: "{{ _project_ids_raw.results | map(attribute='ansible_facts.project') | list }}"
+
+- debug: msg={{ _projcts }}
+
+- name: Work with repos
+  include_tasks: "repos.yml"
+  loop: "{{ _projcts | default([]) }}"
+  loop_control:
+    loop_var: _project
