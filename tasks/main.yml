@@ -59,12 +59,8 @@
     body_format: json
     body:
       project: "{{ _project.id }}"
-      provider:
-        name: "{{ tugboat_repo.provider.name }}"
-        address: "{{ tugboat_repo.provider.address | default('') }}"
-      repository:
-        name: "{{ tugboat_repo.repository.name }}"
-        group: "{{ tugboat_repo.repository.group }}"
+      provider: "{{ tugboat_repo.provider | default(omit) | to_json  }}"
+      repository: "{{ tugboat_repo.repository | default(omit) | to_json }}"
       auth:
         token: "{{ tugboat_repo.auth.token | default('') }}"
       name: "{{ tugboat_repo.name }}"
@@ -102,13 +98,25 @@
       - 200
     body_format: json
     body:
-      auth:
-        token: "{{ tugboat_repo.auth.token | default('') }}"
-      name: "{{ tugboat_repo.name }}"
+      autobuild: "{{ tugboat_repo.autobuild | default(true) | bool }}"
+      autodelete: "{{ tugboat_repo.autodelete | default(true) | bool }}"
+      autorebuild: "{{ tugboat_repo.autorebuild | default(true) | bool }}"
+      build_timeout: "{{ tugboat_repo.build_timeout | default(1200) | int }}"
       envvars: >
-        [{% for _envar in tugboat_repo.env | default([]) %}
+        [{% for _envar in tugboat_repo.envvars | default([]) %}
           "{{ _envar.name }}={{ _envar.value }}"{% if not loop.last %},{% endif %}
         {% endfor %}]
+      domain: "{{ tugboat_repo.domain | default(omit) }}"
+      ip_allow: "{{ tugboat_repo.ip_allow | default(omit) }}"
+      ip_deny: "{{ tugboat_repo.ip_deny | default(omit) }}"
+      provider_deployment: "{{ tugboat_repo.provider_deployment | default(false) | bool }}"
+      provider_forks: "{{ tugboat_repo.provider_forks | default(true) | bool }}"
+      quota: "{{ tugboat_repo.quota | default(omit) }}"
+      rebuild_orphaned: "{{ tugboat_repo.rebuild_orphaned | default(false) | bool }}"
+      rebuild_stale: "{{ tugboat_repo.rebuild_stale | default(false) | bool }}"
+      refresh_anchors: "{{ tugboat_repo.refresh_anchors | default(true) | bool }}"
+      refresh_day: "{{ tugboat_repo.refresh_day | default(7) | int }}"
+      refresh_hour: "{{ tugboat_repo.refresh_hour | default(0) | int }}"
   when:
     - _repo_id | default('') != ''
     - tugboat_repo.name in _repo_names
