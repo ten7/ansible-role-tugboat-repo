@@ -59,8 +59,8 @@
     body_format: json
     body:
       project: "{{ _project.id }}"
-      provider: "{{ tugboat_repo.provider | default(omit) | to_json  }}"
-      repository: "{{ tugboat_repo.repository | default(omit) | to_json }}"
+      provider: "{{ tugboat_repo.provider }}"
+      repository: "{{ tugboat_repo.repository }}"
       auth:
         token: "{{ tugboat_repo.auth.token | default('') }}"
       name: "{{ tugboat_repo.name }}"
